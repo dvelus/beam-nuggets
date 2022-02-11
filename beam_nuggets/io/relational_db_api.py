@@ -103,6 +103,7 @@ class SourceConfiguration(object):
         database=None,
         username=None,
         password=None,
+        schema=None,
         create_if_missing=False,
     ):
         self.url = URL(
@@ -113,6 +114,7 @@ class SourceConfiguration(object):
             port=port,
             database=database
         )
+        self.schema = schema
         self.create_if_missing = create_if_missing
 
 
@@ -257,6 +259,8 @@ class SqlAlchemyDB(object):
         if create_if_missing and is_database_missing():
             create_database(self._source.url)
         self._session = self._SessionClass()
+        if self._source.schema:
+            self._session.execute("SET search_path TO %s" % self._source.schema)
 
     def close_session(self):
         self._session.close()
