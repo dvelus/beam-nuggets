@@ -172,6 +172,8 @@ class _WriteToRelationalDBFn(DoFn):
         super(_WriteToRelationalDBFn, self).__init__(*args, **kwargs)
         self.source_config = source_config
         self.table_config = table_config
+        if source_config.schema:
+            self.table_config.schema = source_config.schema
 
     def start_bundle(self):
         self._db = SqlAlchemyDB(self.source_config)

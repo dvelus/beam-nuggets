@@ -224,12 +224,14 @@ class TableConfiguration(object):
     def __init__(
         self,
         name,
+        schema=None,
         define_table_f=None,
         create_if_missing=False,
         primary_key_columns=None,
         create_insert_f=None
     ):
         self.name = name
+        self.schema = schema
         self.define_table_f = define_table_f
         self.create_table_if_missing = create_if_missing
         self.primary_key_column_names = primary_key_columns or []
@@ -259,8 +261,8 @@ class SqlAlchemyDB(object):
         if create_if_missing and is_database_missing():
             create_database(self._source.url)
         self._session = self._SessionClass()
-        if self._source.schema:
-            self._session.execute("SET search_path TO %s" % self._source.schema)
+        # if self._source.schema:
+        #     self._session.execute("SET search_path TO %s" % self._source.schema)
 
     def close_session(self):
         self._session.close()
@@ -314,22 +316,24 @@ class SqlAlchemyDB(object):
     def _open_table_for_write(self, table_config, record):
         return self._open_table(
             name=table_config.name,
+            schema=table_config.schema,
             get_table_f=create_table,
             table_config=table_config,
             record=record
         )
 
-    def _open_table(self, name, get_table_f, **get_table_f_params):
-        table = self._name_to_table.get(name, None)
+    def _open_table(self, name, schema, get_table_f, **get_table_f_params):
+        full_name = schema + '.' + name if schema else name
+        table = self._name_to_table.get(full_name)
         if not table:
-            self._name_to_table[name] = (
-                self._get_table(name, get_table_f, **get_table_f_params)
+            self._name_to_table[full_name] = (
+                self._get_table(name, schema, get_table_f, **get_table_f_params)
             )
-            table = self._name_to_table[name]
+            table = self._name_to_table[full_name]
         return table
 
-    def _get_table(self, name, get_table_f, **get_table_f_params):
-        table_class = get_table_f(self._session, name, **get_table_f_params)
+    def _get_table(self, name, schema, get_table_f, **get_table_f_params):
+        table_class = get_table_f(self._session, name, schema, **get_table_f_params)
         if table_class:
             table = _Table(table_class=table_class, name=name)
         else:
@@ -379,18 +383,18 @@ class _Table(object):
         return {col: getattr(db_record, col) for col in column_names}
 
 
-def load_table(session, name):
+def load_table(session, name, schema):
     table_class = None
     engine = session.bind
-    if inspect(engine).has_table(name):
+    if inspect(engine).has_table(name, schema):
         metadata = MetaData(bind=engine)
-        table_class = create_table_class(Table(name, metadata, autoload=True))
+        table_class = create_table_class(Table(name, metadata, schema=schema, autoload=True))
     return table_class
 
 
-def create_table(session, name, table_config, record):
+def create_table(session, name, schema, table_config, record):
     # Attempt to load from the DB
-    table_class = load_table(session, name)
+    table_class = load_table(session, name, schema)
 
     if not table_class and table_config.create_table_if_missing:
         define_table_f = (
